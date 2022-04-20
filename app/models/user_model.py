@@ -13,7 +13,6 @@ class UserModel(db.Model):
     email = Column(String(255), nullable=False, unique=True)
     
     password_hash = Column(String(511), nullable=False)
-    api_key = Column(String(511), nullable=False)
 
     
     @property

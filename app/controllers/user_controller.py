@@ -1,27 +1,34 @@
 from flask import request, jsonify, current_app
 from app.models.user_model import UserModel
-import secrets
-from app.configs.auth import auth
+from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
 from sqlalchemy.exc import IntegrityError
 
 
-@auth.login_required
+@jwt_required()
 def get_users():
-    user = auth.current_user()
+    try:
+        user = get_jwt_identity()
 
-    return {
-        "name": user.name,
-        "last_name": user.last_name,
-        "email": user.email
-    }
+        mapped = UserModel.query.get(user["id"])
+
+        serialized = {
+            "name": mapped.name,
+            "last_name": mapped.last_name,
+            "email": mapped.email
+        }
+
+        return jsonify(serialized), 200
+
+    except:
+        return {
+            "error": "User not found"
+        }, 404
 
 
 def create_account():
     data = request.get_json()
 
     try:
-        data["api_key"] = secrets.token_urlsafe(32)
-
         password_to_hash = data.pop("password")
 
         user = UserModel(**data)
@@ -52,47 +59,63 @@ def login():
 
     if(not user or not user.verify_password(data["password"])):
         return {
-            "error": "Email or Password doesn't matches"
+            "error": "Email or Password doesn't match"
         }, 404
 
+    serialized = {
+        "id": user.id,
+        "name": user.name,
+        "email": user.email
+    }
+
+    access_token = create_access_token(serialized)
+    
     return {
-        "api_key": user.api_key
+        "access_token": access_token
     }, 200
 
 
-@auth.login_required
+@jwt_required()
 def update_user():
     data = request.get_json()
 
-    user = auth.current_user()
+    user = get_jwt_identity()
+
+    mapped = UserModel.query.get(user["id"])
 
     try:
         if(user):
             for key, value in data.items():
-                setattr(user, key, value)
+                setattr(mapped, key, value)
 
-            current_app.db.session.add(user)
+            current_app.db.session.add(mapped)
             current_app.db.session.commit()
 
             return {
-                "name": user.name,
-                "last_name": user.last_name,
-                "email": user.email
+                "name": mapped.name,
+                "last_name": mapped.last_name,
+                "email": mapped.email
             }, 200
     except:
         return {
-            "error": "missing keys or wrong keys"
+            "error": "User not found"
         }, 400
         
 
-@auth.login_required
+@jwt_required()
 def delete_user():
-    user = auth.current_user()
+    user = get_jwt_identity()
 
-    if(user):
-        current_app.db.session.delete(user)
+    mapped = UserModel.query.get(user["id"])
+
+    if(mapped):
+        current_app.db.session.delete(mapped)
         current_app.db.session.commit()
 
         return {
-            "msg": f"User {user.name} has been deleted"
+            "msg": f"User {mapped.name} has been deleted"
         }, 200
+
+    return {
+        "error": "User not found"
+    }, 404
